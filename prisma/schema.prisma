@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// AUTH & RBAC
+// ──────────────────────────────────────────────
+
+model User {
+  id                  Int      @id @default(autoincrement())
+  name                String   @db.VarChar(150)
+  email               String   @unique @db.VarChar(255)
+  password            String   @db.VarChar(255)
+  phone               String?  @db.VarChar(20)
+  avatarUrl           String?  @map("avatar_url") @db.VarChar(500)
+  isActive            Boolean  @default(true) @map("is_active")
+  failedLoginAttempts Int      @default(0) @map("failed_login_attempts")
+  lastLoginAt         DateTime? @map("last_login_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  refreshTokens RefreshToken[]
+  userRoles     UserRole[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model Role {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(50)
+  description String? @db.VarChar(255)
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId Int @map("user_id")
+  roleId Int @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(100)
+  description String? @db.VarChar(255)
+  module      String  @db.VarChar(50)
+
+  rolePermissions   RolePermission[]
+  modulePermissions ModulePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int @map("role_id")
+  permissionId Int @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Module {
+  id           Int     @id @default(autoincrement())
+  name         String  @db.VarChar(100)
+  route        String  @db.VarChar(255)
+  icon         String  @db.VarChar(100)
+  parentId     Int?    @map("parent_id")
+  displayOrder Int     @default(0) @map("display_order")
+
+  parent   Module?  @relation("ModuleTree", fields: [parentId], references: [id])
+  children Module[] @relation("ModuleTree")
+
+  modulePermissions ModulePermission[]
+
+  @@map("modules")
+}
+
+model ModulePermission {
+  moduleId     Int @map("module_id")
+  permissionId Int @map("permission_id")
+
+  module     Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, permissionId])
+  @@map("module_permissions")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  action     String   @db.VarChar(50)
+  entityType String?  @map("entity_type") @db.VarChar(100)
+  entityId   Int?     @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
