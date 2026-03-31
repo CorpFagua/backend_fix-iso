@@ -152,6 +152,7 @@ async function main() {
   const childModules = [
     { id: 6, name: 'Usuarios', route: '/admin/users', icon: 'TeamOutlined', parentId: 5, displayOrder: 1 },
     { id: 7, name: 'Roles y Permisos', route: '/admin/roles', icon: 'LockOutlined', parentId: 5, displayOrder: 2 },
+    { id: 9, name: 'Catálogo ISO', route: '/catalog', icon: 'BookOutlined', parentId: 5, displayOrder: 3 },
   ];
 
   for (const m of childModules) {
@@ -161,7 +162,7 @@ async function main() {
       create: m,
     });
   }
-  console.log('  ✓ 8 modules');
+  console.log('  ✓ 9 modules');
 
   // ──────────────────────────────────────────────
   // 5. MODULE_PERMISSIONS
@@ -173,9 +174,10 @@ async function main() {
     2: ['controls:read'],                               // Controles ISO
     3: ['soa:read'],                                    // SoA
     4: ['assets:read'],                                 // Activos
-    5: ['users:read', 'roles:read'],                    // Administración
+    5: ['users:read', 'roles:read', 'controls:update'], // Administración
     6: ['users:read'],                                  // Usuarios (child)
     7: ['roles:read'],                                  // Roles y Permisos (child)
+    9: ['controls:update'],                             // Catálogo ISO (child)
   };
 
   for (const [modId, permNames] of Object.entries(modulePermissionsMap)) {
