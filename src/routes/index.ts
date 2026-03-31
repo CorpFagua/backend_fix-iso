@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
+import companiesRoutes from '../modules/companies/companies.routes';
+import catalogsRoutes from '../modules/catalogs/catalogs.routes';
+import controlsRoutes, { companyControlsRouter } from '../modules/controls/controls.routes';
+import dashboardRoutes from '../modules/dashboard/dashboard.routes';
+import usersRoutes from '../modules/users/users.routes';
+import adminRoutes from '../modules/admin/admin.routes';
+import assetsRoutes from '../modules/assets/assets.routes';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
-
-// Future modules will be mounted here:
-// router.use('/users', usersRoutes);
-// router.use('/companies', companiesRoutes);
-// router.use('/controls', controlsRoutes);
-// router.use('/assets', assetsRoutes);
-// router.use('/dashboard', dashboardRoutes);
+router.use('/companies', companiesRoutes);
+router.use('/companies/:companyId', companyControlsRouter);
+router.use('/companies/:companyId', assetsRoutes);
+router.use('/catalogs', catalogsRoutes);
+router.use('/controls', controlsRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/users', usersRoutes);
+router.use('/', adminRoutes);
 
 export default router;

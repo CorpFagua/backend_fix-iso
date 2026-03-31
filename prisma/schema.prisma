@@ -23,9 +23,19 @@ model User {
   lastLoginAt         DateTime? @map("last_login_at")
   createdAt           DateTime @default(now()) @map("created_at")
 
-  refreshTokens RefreshToken[]
-  userRoles     UserRole[]
-  auditLogs     AuditLog[]
+  refreshTokens      RefreshToken[]
+  userRoles          UserRole[]
+  auditLogs          AuditLog[]
+  companyUsers       CompanyUser[]
+  companiesCreated   Company[]          @relation("CompanyCreatedBy")
+  assignedControls   CompanyControl[]   @relation("ControlAssignedUser")
+  uploadedEvidence   ControlEvidence[]
+  auditsAsAuditor    Audit[]
+  ownedAssets        Asset[]            @relation("AssetOwner")
+  custodianAssets    Asset[]            @relation("AssetCustodian")
+  riskAssessedBy     AssetRiskAssessment[]
+  trainingsGiven     Training[]
+  notifications      Notification[]
 
   @@map("users")
 }
@@ -135,4 +145,356 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+// ──────────────────────────────────────────────
+// EMPRESAS CLIENTE
+// ──────────────────────────────────────────────
+
+model Sector {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(100)
+  description String? @db.VarChar(255)
+
+  companies            Company[]
+  controlApplicability ControlApplicability[]
+
+  @@map("sectors")
+}
+
+model CompanySize {
+  id           Int     @id @default(autoincrement())
+  name         String  @unique @db.VarChar(50)
+  minEmployees Int     @map("min_employees")
+  maxEmployees Int?    @map("max_employees")
+
+  companies            Company[]
+  controlApplicability ControlApplicability[]
+
+  @@map("company_sizes")
+}
+
+model Company {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(200)
+  sectorId        Int       @map("sector_id")
+  sizeId          Int       @map("size_id")
+  country         String    @db.VarChar(100)
+  status          String    @default("active") @db.VarChar(20)
+  engagementStart DateTime? @map("engagement_start") @db.Date
+  engagementEnd   DateTime? @map("engagement_end") @db.Date
+  createdBy       Int       @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  sector   Sector      @relation(fields: [sectorId], references: [id])
+  size     CompanySize @relation(fields: [sizeId], references: [id])
+  creator  User        @relation("CompanyCreatedBy", fields: [createdBy], references: [id])
+
+  companyUsers    CompanyUser[]
+  companyServices CompanyService[]
+  soa             StatementOfApplicability[]
+  companyControls CompanyControl[]
+  assets          Asset[]
+  audits          Audit[]
+  riskAssessments RiskAssessment[]
+  trainings       Training[]
+
+  @@index([sectorId])
+  @@index([sizeId])
+  @@map("companies")
+}
+
+model CompanyService {
+  id          Int       @id @default(autoincrement())
+  companyId   Int       @map("company_id")
+  serviceType String    @map("service_type") @db.VarChar(30)
+  status      String    @default("active") @db.VarChar(20)
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, serviceType])
+  @@map("company_services")
+}
+
+model CompanyUser {
+  companyId     Int       @map("company_id")
+  userId        Int       @map("user_id")
+  roleInCompany String?   @map("role_in_company") @db.VarChar(100)
+  assignedAt    DateTime  @default(now()) @map("assigned_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, userId])
+  @@map("company_users")
+}
+
+// ──────────────────────────────────────────────
+// ISO 27001:2022 — CONTROLES
+// ──────────────────────────────────────────────
+
+model IsoTheme {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(100)
+  description String?
+
+  controls IsoControl[]
+
+  @@map("iso_themes")
+}
+
+model IsoControl {
+  id          Int    @id @default(autoincrement())
+  code        String @unique @db.VarChar(10)
+  title       String @db.VarChar(255)
+  description String @default("")
+  themeId     Int    @map("theme_id")
+  controlType String @map("control_type") @db.VarChar(20)
+  properties  String @db.VarChar(100)
+  version     String @default("2022") @db.VarChar(10)
+
+  theme IsoTheme @relation(fields: [themeId], references: [id])
+
+  applicability   ControlApplicability[]
+  soa             StatementOfApplicability[]
+  companyControls CompanyControl[]
+  auditResults    AuditResult[]
+
+  @@index([themeId])
+  @@map("iso_controls")
+}
+
+model ControlApplicability {
+  id        Int     @id @default(autoincrement())
+  controlId Int     @map("control_id")
+  sectorId  Int     @map("sector_id")
+  sizeId    Int     @map("size_id")
+  priority  Int
+  mandatory Boolean @default(false)
+
+  control IsoControl  @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  sector  Sector      @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  size    CompanySize @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+
+  @@unique([controlId, sectorId, sizeId])
+  @@map("control_applicability")
+}
+
+model StatementOfApplicability {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int      @map("company_id")
+  controlId            Int      @map("control_id")
+  applicable           Boolean
+  justification        String?
+  implementationStatus String   @default("not_started") @map("implementation_status") @db.VarChar(30)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  control IsoControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, controlId])
+  @@map("statements_of_applicability")
+}
+
+model CompanyControl {
+  id                   Int       @id @default(autoincrement())
+  companyId            Int       @map("company_id")
+  controlId            Int       @map("control_id")
+  status               String    @default("pending") @db.VarChar(30)
+  maturityLevel        String    @default("initial") @map("maturity_level") @db.VarChar(20)
+  compliancePercentage Int       @default(0) @map("compliance_percentage")
+  assignedUserId       Int?      @map("assigned_user")
+  implementationDate   DateTime? @map("implementation_date") @db.Date
+  reviewDate           DateTime? @map("review_date") @db.Date
+  notes                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  control      IsoControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  assignedUser User?      @relation("ControlAssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  evidence ControlEvidence[]
+
+  @@unique([companyId, controlId])
+  @@index([status])
+  @@map("company_controls")
+}
+
+model ControlEvidence {
+  id               Int      @id @default(autoincrement())
+  companyControlId Int      @map("company_control_id")
+  fileUrl          String   @map("file_url") @db.VarChar(500)
+  description      String?
+  uploadedBy       Int      @map("uploaded_by")
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+
+  companyControl CompanyControl @relation(fields: [companyControlId], references: [id], onDelete: Cascade)
+  uploader       User           @relation(fields: [uploadedBy], references: [id])
+
+  @@map("control_evidence")
+}
+
+// ──────────────────────────────────────────────
+// ACTIVOS DE INFORMACIÓN
+// ──────────────────────────────────────────────
+
+model Asset {
+  id             Int      @id @default(autoincrement())
+  companyId      Int      @map("company_id")
+  name           String   @db.VarChar(200)
+  description    String?
+  assetType      String   @map("asset_type") @db.VarChar(30)
+  classification String   @default("internal") @db.VarChar(20)
+  ownerId        Int      @map("owner_id")
+  custodianId    Int?     @map("custodian_id")
+  location       String?  @db.VarChar(255)
+  status         String   @default("active") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner     User    @relation("AssetOwner", fields: [ownerId], references: [id])
+  custodian User?   @relation("AssetCustodian", fields: [custodianId], references: [id])
+
+  riskAssessments AssetRiskAssessment[]
+
+  @@index([companyId])
+  @@index([assetType])
+  @@map("assets")
+}
+
+model AssetRiskAssessment {
+  id                 Int       @id @default(autoincrement())
+  assetId            Int       @map("asset_id")
+  threat             String    @db.VarChar(255)
+  vulnerability      String    @db.VarChar(255)
+  likelihood         Int
+  impact             Int
+  riskScore          Float     @map("risk_score")
+  riskLevel          String    @map("risk_level") @db.VarChar(20)
+  treatment          String    @db.VarChar(20)
+  treatmentPlan      String?   @map("treatment_plan")
+  residualRiskScore  Float?    @map("residual_risk_score")
+  assessedBy         Int       @map("assessed_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  asset    Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assessor User  @relation(fields: [assessedBy], references: [id])
+
+  @@map("asset_risk_assessments")
+}
+
+// ──────────────────────────────────────────────
+// AUDITORÍAS Y RIESGOS
+// ──────────────────────────────────────────────
+
+model Audit {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  auditorId Int      @map("auditor_id")
+  date      DateTime
+  status    String   @default("planned") @db.VarChar(20)
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  auditor User          @relation(fields: [auditorId], references: [id])
+  results AuditResult[]
+
+  @@index([companyId])
+  @@map("audits")
+}
+
+model AuditResult {
+  id        Int     @id @default(autoincrement())
+  auditId   Int     @map("audit_id")
+  controlId Int     @map("control_id")
+  result    String  @db.VarChar(30)
+  comments  String?
+  evidence  String? @db.VarChar(500)
+
+  audit   Audit      @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  control IsoControl @relation(fields: [controlId], references: [id])
+
+  @@unique([auditId, controlId])
+  @@map("audit_results")
+}
+
+model RiskAssessment {
+  id          Int      @id @default(autoincrement())
+  companyId   Int      @map("company_id")
+  riskScore   Float    @map("risk_score")
+  riskLevel   String   @map("risk_level") @db.VarChar(20)
+  analysis    String
+  methodology String   @db.VarChar(100)
+  scope       String?
+  status      String   @default("draft") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("risk_assessments")
+}
+
+// ──────────────────────────────────────────────
+// CAPACITACIONES
+// ──────────────────────────────────────────────
+
+model Training {
+  id           Int      @id @default(autoincrement())
+  companyId    Int      @map("company_id")
+  trainerId    Int      @map("trainer_id")
+  title        String   @db.VarChar(255)
+  description  String?
+  trainingType String   @map("training_type") @db.VarChar(30)
+  date         DateTime
+  status       String   @default("scheduled") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trainer   User                @relation(fields: [trainerId], references: [id])
+  attendees TrainingAttendee[]
+
+  @@index([companyId])
+  @@map("trainings")
+}
+
+model TrainingAttendee {
+  trainingId    Int     @map("training_id")
+  attendeeName  String  @map("attendee_name") @db.VarChar(150)
+  attendeeEmail String? @map("attendee_email") @db.VarChar(255)
+  attended      Boolean @default(false)
+
+  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+
+  @@id([trainingId, attendeeName])
+  @@map("training_attendees")
+}
+
+// ──────────────────────────────────────────────
+// NOTIFICACIONES
+// ──────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String   @db.VarChar(200)
+  message   String
+  type      String   @db.VarChar(20)
+  read      Boolean  @default(false)
+  link      String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
 }

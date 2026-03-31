@@ -1,7 +1,7 @@
 # Backend Fix-ISO — API REST
 
 **Stack:** Express 5 + TypeScript + Prisma 6 + PostgreSQL
-**Propósito:** API REST para la plataforma Fix-ISO de implementación ISO 27001:2022 multi-tenant.
+**Propósito:** API REST para Fix-ISO, herramienta interna de una empresa consultora de seguridad informática que gestiona proyectos de implementación, auditoría y capacitación ISO 27001:2022 en empresas cliente.
 
 ---
 
@@ -18,6 +18,7 @@
 - [Middleware de seguridad](#middleware-de-seguridad)
 - [Credenciales de seed](#credenciales-de-seed)
 - [Comandos útiles de Prisma](#comandos-útiles-de-prisma)
+- [Guía para desarrolladores](#guía-para-desarrolladores)
 - [Integración con Frontend](#integración-con-frontend)
 - [Estado de implementación](#estado-de-implementación)
 
@@ -99,9 +100,9 @@ Crear archivo `.env` en la raíz del backend (NO commitear, está en `.gitignore
 ```
 backend_fix-iso/
 ├── prisma/
-│   ├── schema.prisma                    # Esquema de la BD (modelos, relaciones, índices)
-│   ├── seed.ts                          # Script de datos iniciales
-│   └── migrations/                      # Migraciones auto-generadas
+│   ├── schema.prisma                    # Esquema BD: 24 modelos (auth + negocio)
+│   ├── seed.ts                          # Datos iniciales: usuarios, 93 controles ISO, empresas, activos
+│   └── migrations/                      # Migraciones: init_auth + add_business_tables
 │
 ├── src/
 │   ├── index.ts                         # Entry point: Express + middleware global + rutas
@@ -118,15 +119,26 @@ backend_fix-iso/
 │   │   ├── errorHandler.ts              # Manejo centralizado de errores
 │   │   └── logger.ts                    # Log de requests (method, url, status, duration)
 │   │
+│   ├── models/                          # Capa de dominio: interfaces TypeScript (DTOs)
+│   │   ├── company.model.ts             # CompanyModel, CompanyUserModel, CompanyServiceModel
+│   │   ├── control.model.ts             # IsoThemeModel, IsoControlModel, CompanyControlModel, SoAEntryModel
+│   │   ├── asset.model.ts               # AssetModel, AssetWithRisksModel, AssetRiskModel
+│   │   ├── user.model.ts                # UserModel, RoleModel, PermissionModel
+│   │   ├── dashboard.model.ts           # DashboardStatsModel, ComplianceByThemeModel, etc.
+│   │   └── index.ts                     # Barrel export de todos los modelos
+│   │
 │   ├── modules/
-│   │   └── auth/
-│   │       ├── auth.routes.ts           # Rutas: /login, /refresh, /logout, /me
-│   │       ├── auth.controller.ts       # Handlers HTTP
-│   │       ├── auth.service.ts          # Lógica de negocio (login, refresh, logout, getMe)
-│   │       └── auth.validator.ts        # Schemas Zod (loginSchema, refreshSchema)
+│   │   ├── auth/                        # Login, refresh, logout, /me
+│   │   ├── companies/                   # CRUD empresas + usuarios de empresa
+│   │   ├── controls/                    # Catálogo ISO 27001 + asignación a empresas + SoA
+│   │   ├── assets/                      # CRUD activos + evaluaciones de riesgo
+│   │   ├── dashboard/                   # Estadísticas, compliance, resumen global
+│   │   ├── users/                       # CRUD usuarios del sistema
+│   │   ├── admin/                       # Gestión roles y permisos
+│   │   └── catalogs/                    # Catálogos auxiliares (sectores, tamaños)
 │   │
 │   ├── routes/
-│   │   └── index.ts                     # Router principal: monta módulos bajo /api
+│   │   └── index.ts                     # Router principal: monta todos los módulos bajo /api
 │   │
 │   ├── utils/
 │   │   ├── jwt.ts                       # signAccessToken, verifyAccessToken, generateRefreshToken
@@ -189,6 +201,98 @@ Prisma (database.ts)         ORM type-safe → PostgreSQL
 | `POST` | `/api/auth/logout` | `authMiddleware` | `{ refreshToken }` | Revoca el refresh token |
 | `GET` | `/api/auth/me` | `authMiddleware` | — | Devuelve datos del usuario autenticado |
 | `GET` | `/health` | — | — | Health check del servidor |
+
+### Empresas (`/api/companies`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/companies` | Listar todas las empresas cliente |
+| `POST` | `/api/companies` | Crear empresa |
+| `GET` | `/api/companies/:id` | Detalle de empresa |
+| `PUT` | `/api/companies/:id` | Actualizar empresa |
+| `DELETE` | `/api/companies/:id` | Eliminar empresa |
+| `GET` | `/api/companies/:id/users` | Listar usuarios asignados a empresa |
+| `POST` | `/api/companies/:id/users` | Asignar usuario a empresa |
+| `DELETE` | `/api/companies/:id/users/:userId` | Remover usuario de empresa |
+
+### Controles ISO 27001 (`/api/controls`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/controls` | Listar catálogo completo (93 controles, paginado, filtros) |
+| `GET` | `/api/controls/:id` | Detalle de un control del catálogo |
+| `PUT` | `/api/controls/:id` | Editar control del catálogo (admin) |
+| `GET` | `/api/controls/themes` | Listar 14 temáticas ISO 27001:2022 |
+| `GET` | `/api/companies/:id/controls` | Controles asignados a empresa |
+| `POST` | `/api/companies/:id/controls` | Asignar control a empresa (con madurez/estado) |
+| `PUT` | `/api/companies/:id/controls/:controlId` | Actualizar estado/madurez de control asignado |
+| `DELETE` | `/api/companies/:id/controls/:controlId` | Remover asignación de control |
+| `GET` | `/api/companies/:id/soa` | Statement of Applicability por empresa |
+| `PUT` | `/api/companies/:id/soa/:controlId` | Actualizar entrada del SoA |
+
+**Campos de control asignado (`POST /companies/:id/controls`):**
+```json
+{
+  "controlId": 12,
+  "status": "pending | in_progress | implemented | not_applicable",
+  "maturityLevel": "initial | managed | defined | quantified | optimizing",
+  "assignedUser": 3,
+  "notes": "Texto libre"
+}
+```
+
+### Activos (`/api/companies/:id/assets`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/companies/:id/assets` | Listar activos de empresa (paginado, filtros) |
+| `POST` | `/api/companies/:id/assets` | Crear activo |
+| `GET` | `/api/companies/:id/assets/:assetId` | Detalle con evaluaciones de riesgo |
+| `PUT` | `/api/companies/:id/assets/:assetId` | Actualizar activo |
+| `DELETE` | `/api/companies/:id/assets/:assetId` | Eliminar activo |
+| `POST` | `/api/companies/:id/assets/:assetId/risks` | Crear evaluación de riesgo |
+
+### Dashboard (`/api/dashboard`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/dashboard/stats` | KPIs: controles, activos, auditorías, compliance% |
+| `GET` | `/api/dashboard/compliance` | Progreso de compliance por temática ISO |
+| `GET` | `/api/dashboard/risks` | Distribución de riesgos (low/medium/high/critical) |
+| `GET` | `/api/dashboard/activity` | Últimas 20 acciones del sistema |
+| `GET` | `/api/dashboard/summary` | Resumen global de todas las empresas |
+
+Todos aceptan `?companyId=N` para filtrar por empresa.
+
+### Usuarios (`/api/users`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/users` | Listar usuarios (paginado, búsqueda) |
+| `POST` | `/api/users` | Crear usuario |
+| `GET` | `/api/users/:id` | Detalle de usuario |
+| `PUT` | `/api/users/:id` | Actualizar usuario |
+| `DELETE` | `/api/users/:id` | Desactivar usuario |
+
+### Admin — Roles y Permisos (`/api/roles`, `/api/permissions`, `/api/modules`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/roles` | Listar roles |
+| `POST` | `/api/roles` | Crear rol |
+| `PUT` | `/api/roles/:id` | Actualizar rol |
+| `GET` | `/api/roles/:id/permissions` | Ver permisos de un rol |
+| `PUT` | `/api/roles/:id/permissions` | Reemplazar permisos de un rol |
+| `GET` | `/api/permissions` | Permisos agrupados por módulo |
+| `GET` | `/api/permissions/all` | Todos los permisos (lista plana) |
+| `GET` | `/api/modules` | Listar módulos del sistema |
+
+### Catálogos auxiliares (`/api/catalogs`)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/catalogs/sectors` | Sectores de actividad |
+| `GET` | `/api/catalogs/sizes` | Tamaños de empresa |
 
 ### Responses
 
@@ -334,6 +438,288 @@ npx prisma migrate status
 
 ---
 
+## Guía para desarrolladores
+
+Esta sección explica cómo trabajar sobre el proyecto sin romper nada: modificar la BD, agregar módulos, convenciones de código y errores frecuentes.
+
+---
+
+### Modificar la base de datos
+
+#### Flujo estándar para cualquier cambio en el schema
+
+```
+Editar schema.prisma  →  migrate dev  →  (prisma generate automático)  →  actualizar seed si aplica
+```
+
+**Paso a paso:**
+
+```bash
+# 1. Editar prisma/schema.prisma con el cambio deseado
+
+# 2. Crear y aplicar la migración (genera SQL + actualiza el cliente Prisma)
+npx prisma migrate dev --name descripcion-corta-del-cambio
+
+# El nombre debe ser descriptivo: add-audit-results, add-evidence-files, etc.
+# Si hay datos existentes que se deben migrar, editar el SQL generado en
+# prisma/migrations/<timestamp>_descripcion/migration.sql ANTES de aplicar
+
+# 3. Si solo quieres regenerar el cliente sin migrar (ej: después de un git pull)
+npx prisma generate
+
+# 4. Si el nuevo modelo necesita datos iniciales, actualizar prisma/seed.ts
+# y ejecutar SOLO EL SEED sin resetear la BD:
+npx prisma db seed
+
+# PRECAUCIÓN: el siguiente comando BORRA TODOS LOS DATOS y re-crea desde cero
+npx prisma migrate reset   # usar solo en desarrollo local, nunca en producción
+```
+
+> **Importante:** después de `migrate dev`, el cliente Prisma se regenera automáticamente. Si ves errores del tipo `La propiedad 'X' no existe en PrismaClient` en el IDE, ejecuta `npx prisma generate` manualmente y reinicia el TS Server del editor (`Ctrl+Shift+P → TypeScript: Restart TS Server`).
+
+---
+
+#### Agregar un nuevo campo a un modelo existente
+
+```prisma
+// prisma/schema.prisma — ejemplo: agregar campo a Company
+model Company {
+  // campos existentes...
+  website   String?   // campo nuevo (nullable para no romper datos existentes)
+}
+```
+
+```bash
+npx prisma migrate dev --name add-website-to-company
+```
+
+Regla: si el campo es **NOT NULL** sin default y la tabla ya tiene datos, la migración fallará. Opciones:
+- Hacerlo nullable (`String?`)
+- Darle un default (`@default("")`)
+- Editar el SQL generado para hacer un `UPDATE` previo a `ALTER COLUMN`
+
+---
+
+#### Agregar una tabla nueva
+
+1. Definir el modelo en `prisma/schema.prisma` siguiendo las convenciones del proyecto:
+
+```prisma
+model Evidence {
+  id          Int      @id @default(autoincrement())
+  controlId   Int
+  companyId   Int
+  fileName    String
+  fileUrl     String
+  uploadedBy  Int
+  createdAt   DateTime @default(now())
+
+  control     IsoControl @relation(fields: [controlId], references: [id])
+  company     Company    @relation(fields: [companyId], references: [id])
+  uploader    User       @relation("EvidenceUploader", fields: [uploadedBy], references: [id])
+
+  @@map("evidences")
+}
+```
+
+2. Agregar la relación inversa en los modelos relacionados (`IsoControl`, `Company`, `User`).
+
+3. Migrar:
+```bash
+npx prisma migrate dev --name add-evidences-table
+```
+
+4. Crear la interfaz del modelo en `src/models/`:
+```typescript
+// src/models/evidence.model.ts
+export interface EvidenceModel {
+  id: number;
+  controlId: number;
+  companyId: number;
+  fileName: string;
+  fileUrl: string;
+  uploadedBy: number;
+  createdAt: Date;
+}
+```
+
+5. Exportarla desde `src/models/index.ts`.
+
+---
+
+#### Convenciones del schema Prisma
+
+| Convención | Ejemplo |
+|---|---|
+| Nombres de modelos en PascalCase | `CompanyControl`, `IsoTheme` |
+| Nombres de tablas en snake_case con `@@map` | `@@map("company_controls")` |
+| Campos de FK con sufijo `Id` | `companyId`, `controlId` |
+| Timestamps en todos los modelos | `createdAt DateTime @default(now())`, `updatedAt DateTime @updatedAt` |
+| Campos opcionales con `?` | `description String?` |
+| Enums como strings con validación en capa de servicio | No usar Prisma enums — usar `String` + validar en el service |
+
+---
+
+### Agregar un nuevo módulo/endpoint
+
+Todos los módulos siguen exactamente este patrón. Crear los tres archivos:
+
+```
+src/modules/<nombre>/
+  <nombre>.routes.ts      ← define rutas, aplica authMiddleware
+  <nombre>.controller.ts  ← extrae params del request, llama al service
+  <nombre>.service.ts     ← toda la lógica + queries Prisma
+```
+
+**1. `<nombre>.service.ts`** — importar tipos Prisma para evitar `any` implícito:
+
+```typescript
+import type { Prisma } from '@prisma/client';
+import prisma from '../../config/database';
+
+type EvidenceRow = Prisma.EvidenceGetPayload<{
+  include: { uploader: { select: { name: true } } };
+}>;
+
+export async function getEvidences(controlId: number) {
+  const rows = await prisma.evidence.findMany({
+    where: { controlId },
+    include: { uploader: { select: { name: true } } },
+  });
+  return rows.map((e: EvidenceRow) => ({ ...e }));
+}
+```
+
+**2. `<nombre>.controller.ts`** — siempre usar `String()` con `req.params`:
+
+```typescript
+import type { Request, Response } from 'express';
+import * as evidencesService from './evidences.service';
+
+export async function listEvidences(req: Request, res: Response) {
+  const controlId = parseInt(String(req.params.controlId));
+  const data = await evidencesService.getEvidences(controlId);
+  res.json({ data });
+}
+```
+
+> **Por qué `String(req.params.x)`:** Express 5 tipifica `req.params` como `string | string[]`. Pasar directamente a `parseInt()` genera error TS. Siempre envolver con `String()`.
+
+**3. `<nombre>.routes.ts`:**
+
+```typescript
+import { Router } from 'express';
+import { authMiddleware } from '../../middleware/auth';
+import * as ctrl from './evidences.controller';
+
+const router = Router();
+router.use(authMiddleware);
+
+router.get('/', ctrl.listEvidences);
+router.post('/', ctrl.createEvidence);
+
+export default router;
+```
+
+**4. Registrar en `src/routes/index.ts`:**
+
+```typescript
+import evidencesRoutes from '../modules/evidences/evidences.routes';
+
+// dentro de la función de rutas:
+router.use('/evidences', evidencesRoutes);
+```
+
+**5. Si aplica, crear la interfaz en `src/models/evidence.model.ts`** y exportarla desde `src/models/index.ts`.
+
+---
+
+### Convenciones de código
+
+| Aspecto | Regla |
+|---|---|
+| `req.params` | Siempre `parseInt(String(req.params.id))` — nunca directo |
+| `req.query` | Cast explícito: `req.query.page as string` |
+| Lambdas en `.map()` / `.filter()` | Tipar el parámetro con `Prisma.XGetPayload<>` o un tipo inline |
+| Null safety en relaciones opcionales | Usar `?.` y `?? fallback` (ej: `user?.name ?? 'Sistema'`) |
+| Rutas HTTP | Siempre bajo `/api/*`. No exponer rutas sin prefijo |
+| Responses de éxito | `res.json({ data: ... })` para items, paginados devuelven `{ data, meta }` |
+| Responses de error | `res.status(N).json({ error: 'mensaje' })` |
+| Creación exitosa | `res.status(201).json({ data })` |
+| Borrado exitoso | `res.status(204).end()` |
+| Modelos de dominio | Definir interfaces en `src/models/` — no retornar objetos Prisma directamente |
+
+**Estructura de response paginada:**
+```json
+{
+  "data": [ ...items ],
+  "meta": { "page": 1, "limit": 20, "total": 93, "totalPages": 5 }
+}
+```
+
+---
+
+### Manejo de errores
+
+El error handler global (`src/middleware/errorHandler.ts`) ya captura y transforma:
+
+| Error | HTTP | Cuándo ocurre |
+|---|---|---|
+| `ZodError` | 400 | Validación de body fallida |
+| `PrismaClientKnownRequestError P2002` | 409 | Violación de unique constraint |
+| `PrismaClientKnownRequestError P2025` | 404 | Record not found en update/delete |
+| Cualquier otro `Error` | 500 | Sin leak de stack trace en producción |
+
+En los servicios **no hace falta try/catch** — dejar que los errores suban al handler. Solo capturar cuando se quiere transformar específicamente el error.
+
+---
+
+### Errores frecuentes y cómo resolverlos
+
+**`La propiedad 'X' no existe en el tipo 'PrismaClient'`**
+```bash
+# El cliente Prisma del IDE está desactualizado
+npx prisma generate
+# Luego en VS Code: Ctrl+Shift+P → TypeScript: Restart TS Server
+```
+
+**`No se puede asignar un argumento de tipo 'string | string[]'`**
+```typescript
+// Error: parseInt(req.params.id)
+// Fix:
+const id = parseInt(String(req.params.id));
+```
+
+**`El parámetro 'x' tiene un tipo 'any' implícitamente`**
+```typescript
+// En callbacks de .map() o .filter() sobre resultados de Prisma:
+type MyRow = Prisma.ModelGetPayload<{ include: { ... } }>;
+const results = rows.map((row: MyRow) => ({ ... }));
+```
+
+**La migración falla por datos existentes**
+```bash
+# Opción A: hacer el campo nullable
+# Opción B: editar prisma/migrations/.../migration.sql para añadir UPDATE antes del ALTER
+# Opción C: en dev, resetear todo:
+npx prisma migrate reset
+```
+
+**El seed falla con "Unique constraint violated"**
+```bash
+# El seed usa upsert/createMany con skipDuplicates en la mayoría de entidades.x
+# Si falla, probablemente los IDs hardcodeados ya existen. Resetear la BD:
+npx prisma migrate reset
+```
+
+**Error CORS en el frontend**
+```bash
+# Verificar que CORS_ORIGIN en .env coincide con la URL del frontend
+# Por defecto: CORS_ORIGIN=http://localhost:5173
+```
+
+---
+
 ## Integración con Frontend
 
 El backend está diseñado para ser 100% compatible con el contrato API que el frontend (`fix-iso/`) ya usa con MSW (Mock Service Worker).
@@ -359,39 +745,45 @@ VITE_ENABLE_MOCKS=true
 
 ### Implementado
 
-- [x] **Módulo Auth** — login, refresh, logout, /me con JWT
+- [x] **Módulo Auth** — login, refresh, logout, /me con JWT + rotación de tokens + bloqueo por intentos
 - [x] **Middleware de seguridad** — helmet, CORS, rate limiting, auth JWT, RBAC, error handler
-- [x] **Prisma Schema** — tablas de auth/RBAC: users, roles, permissions, modules, refresh_tokens, audit_log + tablas pivote
-- [x] **Seed data** — 35 permisos, 5 roles, 8 módulos, 6 usuarios (idénticos al mock del frontend)
+- [x] **Prisma Schema** — 24 modelos: auth/RBAC + negocio completo (empresas, controles, activos, riesgos, auditorías, capacitaciones, notificaciones)
+- [x] **Seed data** — 35 permisos, 5 roles, 8 módulos, 6 usuarios, 7 sectores, 4 tamaños, 3 empresas, 93 controles ISO 27001:2022, 15 activos, evaluaciones de riesgo, SoA completo
+- [x] **Módulo Companies** — CRUD empresas + asignación de usuarios a empresa
+- [x] **Módulo Controls** — Catálogo ISO (93 controles, CRUD), asignación a empresas con nivel de madurez, Statement of Applicability
+- [x] **Módulo Assets** — CRUD activos de información + evaluaciones de riesgo por activo
+- [x] **Módulo Dashboard** — KPIs, compliance por temática, distribución de riesgos, actividad reciente, resumen global
+- [x] **Módulo Users** — CRUD usuarios del sistema
+- [x] **Módulo Admin** — Gestión de roles, permisos y módulos del sistema
+- [x] **Módulo Catalogs** — Catálogos auxiliares (sectores, tamaños de empresa)
+- [x] **Capa de modelos (DTOs)** — Interfaces TypeScript en `src/models/` desacopladas de Prisma: `CompanyModel`, `IsoControlModel`, `CompanyControlModel`, `AssetModel`, `UserModel`, `DashboardStatsModel`, etc.
+- [x] **Tipos explícitos en servicios** — Todos los callbacks de map/filter tipados con `Prisma.XGetPayload<>` o tipos inline
 - [x] **Validación** — Zod para payloads de entrada
 - [x] **Protección anti-DDoS** — rate limiting por IP (global + auth)
 - [x] **Bloqueo de cuentas** — tras 5 intentos fallidos de login
 - [x] **Rotación de refresh tokens** — detección de robo incluida
 - [x] **Health check** — `/health`
 
-### Pendiente (próximas fases)
+### Pendiente
 
-- [ ] **Módulo Users** — CRUD usuarios, asignación de roles, activar/desactivar
-- [ ] **Módulo Companies** — CRUD empresas, asignación de usuarios, multi-tenant
-- [ ] **Módulo Controls** — Catálogo ISO 27001:2022 (93 controles), implementación por empresa
-- [ ] **Módulo SoA** — Declaración de Aplicabilidad por empresa
-- [ ] **Módulo Assets** — CRUD activos de información, clasificación
-- [ ] **Módulo Risk** — Evaluación de riesgos por activo
-- [ ] **Módulo Audits** — Auditorías internas con resultados por control
-- [ ] **Módulo Dashboard** — Estadísticas agregadas, métricas de cumplimiento
-- [ ] **Audit Trail middleware** — Registro automático de acciones en audit_log
+- [ ] Audit Trail middleware — registro automático en `audit_log` para mutaciones clave
+- [ ] Subida de evidencias de controles (S3 o almacenamiento local)
+- [ ] Módulo Auditorías — CRUD auditorías con resultados por control
+- [ ] Módulo Capacitaciones — gestión de trainings e asistentes
+- [ ] Notificaciones en tiempo real (WebSocket)
+- [ ] Exportación reportes PDF (SoA, compliance)
 
 ### Planificado (futuro)
 
-- [ ] Integración con pipeline Big Data (datos de amenazas → riesgo latente)
+- [ ] Integración con pipeline Big Data (datos OpenPhish → riesgo latente)
 - [ ] Despliegue AWS (EC2/ECS + RDS + S3)
 - [ ] Rate limiter con Redis (producción)
-- [ ] Notificaciones en tiempo real (WebSocket)
-- [ ] Exportación de reportes PDF
 
 ---
 
 ## Base de datos — Tablas actuales
+
+### Tablas Auth/RBAC
 
 | Tabla | Registros seed | Propósito |
 |---|---|---|
@@ -404,3 +796,26 @@ VITE_ENABLE_MOCKS=true
 | `module_permissions` | 9 | Permisos requeridos para ver cada módulo |
 | `refresh_tokens` | dinámico | Tokens de refresco activos/revocados |
 | `audit_log` | 1 | Registro de acciones (inmutable) |
+
+### Tablas de Negocio
+
+| Tabla | Registros seed | Propósito |
+|---|---|---|
+| `sectors` | 7 | Sectores de actividad económica |
+| `company_sizes` | 4 | Tamaños de empresa (micro, pyme, mediana, enterprise) |
+| `companies` | 3 | Empresas cliente (TechCorp, RetailGroup, HealthCare) |
+| `company_users` | 9 | Asignación consultores↔empresa |
+| `company_services` | 5 | Servicios contratados por empresa |
+| `iso_themes` | 14 | Temáticas ISO 27001:2022 (A.5 → A.8 + organizacional) |
+| `iso_controls` | 93 | Catálogo completo ISO 27001:2022 |
+| `statements_of_applicability` | 93 | SoA de TechCorp (todos los controles) |
+| `company_controls` | 30 | Controles asignados a empresas con estado y madurez |
+| `control_evidences` | 0 | Evidencias de implementación de controles |
+| `assets` | 15 | Activos de información de TechCorp |
+| `asset_risk_assessments` | 5 | Evaluaciones de riesgo por activo |
+| `audits` | 1 | Auditorías internas |
+| `audit_results` | 0 | Resultados por control auditado |
+| `risk_assessments` | 2 | Evaluaciones globales de riesgo |
+| `trainings` | 2 | Capacitaciones programadas |
+| `training_attendees` | 0 | Asistentes a capacitaciones |
+| `notifications` | 5 | Notificaciones del sistema |
