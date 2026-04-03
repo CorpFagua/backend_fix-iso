@@ -45,6 +45,8 @@ async function main() {
     { name: 'evidence:delete', description: 'Eliminar evidencias', module: 'evidence' },
     { name: 'audit_log:read', description: 'Ver registro de auditoría del sistema', module: 'audit_log' },
     { name: 'notifications:read', description: 'Ver notificaciones', module: 'notifications' },
+    { name: 'modules:manage', description: 'Gestionar módulos del sistema', module: 'modules' },
+    { name: 'permissions:manage', description: 'Gestionar permisos del sistema', module: 'permissions' },
   ];
 
   const permissions: { id: number; name: string; description: string | null; module: string }[] = [];
@@ -96,7 +98,7 @@ async function main() {
 
   const rolePermissionsMap: Record<string, string[]> = {
     super_admin: permissions.map(p => p.name),
-    admin: permissions.filter(p => p.module !== 'audit_log').map(p => p.name),
+    admin: permissions.filter(p => p.module !== 'audit_log' && p.module !== 'modules' && p.module !== 'permissions').map(p => p.name),
     auditor: [
       'dashboard:read', 'companies:read', 'controls:read', 'controls:export', 'soa:read',
       'assets:read', 'audits:read', 'audits:create', 'audits:update',
@@ -153,6 +155,7 @@ async function main() {
     { id: 6, name: 'Usuarios', route: '/admin/users', icon: 'TeamOutlined', parentId: 5, displayOrder: 1 },
     { id: 7, name: 'Roles y Permisos', route: '/admin/roles', icon: 'LockOutlined', parentId: 5, displayOrder: 2 },
     { id: 9, name: 'Catálogo ISO', route: '/catalog', icon: 'BookOutlined', parentId: 5, displayOrder: 3 },
+    { id: 10, name: 'Módulos y Permisos', route: '/admin/modules', icon: 'AppstoreOutlined', parentId: 5, displayOrder: 4 },
   ];
 
   for (const m of childModules) {
@@ -162,7 +165,7 @@ async function main() {
       create: m,
     });
   }
-  console.log('  ✓ 9 modules');
+  console.log('  ✓ 10 modules');
 
   // ──────────────────────────────────────────────
   // 5. MODULE_PERMISSIONS
@@ -174,10 +177,11 @@ async function main() {
     2: ['controls:read'],                               // Controles ISO
     3: ['soa:read'],                                    // SoA
     4: ['assets:read'],                                 // Activos
-    5: ['users:read', 'roles:read', 'controls:update'], // Administración
+    5: ['users:read', 'roles:read', 'controls:update', 'modules:manage'], // Administración
     6: ['users:read'],                                  // Usuarios (child)
     7: ['roles:read'],                                  // Roles y Permisos (child)
     9: ['controls:update'],                             // Catálogo ISO (child)
+    10: ['modules:manage'],                              // Módulos y Permisos (child)
   };
 
   for (const [modId, permNames] of Object.entries(modulePermissionsMap)) {
@@ -706,6 +710,15 @@ async function main() {
     },
   });
   console.log('  ✓ audit_log initial entry');
+
+  // ──────────────────────────────────────────────
+  // Reset PostgreSQL sequences after seeding with explicit IDs
+  // Without this, the next INSERT would try id=1 and fail with P2002
+  // ──────────────────────────────────────────────
+  await prisma.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence('modules', 'id'), (SELECT MAX(id) FROM modules))`);
+  await prisma.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT MAX(id) FROM permissions))`);
+  await prisma.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT MAX(id) FROM users))`);
+  console.log('  ✓ sequences reset');
 
   console.log('\nSeed completed successfully!');
 }
