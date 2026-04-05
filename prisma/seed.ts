@@ -7,7 +7,7 @@ async function main() {
   console.log('Seeding database...');
 
   // ──────────────────────────────────────────────
-  // 1. PERMISSIONS (35 total — identical to frontend mockPermissions)
+  // 1. PERMISSIONS
   // ──────────────────────────────────────────────
   const permissionsData = [
     { name: 'dashboard:read', description: 'Ver panel de control', module: 'dashboard' },
@@ -47,6 +47,11 @@ async function main() {
     { name: 'notifications:read', description: 'Ver notificaciones', module: 'notifications' },
     { name: 'modules:manage', description: 'Gestionar módulos del sistema', module: 'modules' },
     { name: 'permissions:manage', description: 'Gestionar permisos del sistema', module: 'permissions' },
+    // Implementation module
+    { name: 'implementation:read', description: 'Ver implementación de controles ISO', module: 'implementation' },
+    { name: 'implementation:update', description: 'Actualizar tareas y progreso de implementación', module: 'implementation' },
+    { name: 'implementation:notes', description: 'Gestionar notas de seguimiento de implementación', module: 'implementation' },
+    { name: 'implementation:delete', description: 'Eliminar datos de implementación', module: 'implementation' },
   ];
 
   const permissions: { id: number; name: string; description: string | null; module: string }[] = [];
@@ -103,16 +108,19 @@ async function main() {
       'dashboard:read', 'companies:read', 'controls:read', 'controls:export', 'soa:read',
       'assets:read', 'audits:read', 'audits:create', 'audits:update',
       'risk:read', 'evidence:read', 'notifications:read',
+      'implementation:read',
     ],
     consultant: [
       'dashboard:read', 'companies:read', 'controls:read', 'controls:update', 'controls:export',
       'soa:read', 'soa:update', 'assets:read', 'assets:create', 'assets:update',
       'risk:read', 'risk:create', 'risk:update', 'evidence:read', 'evidence:create',
       'notifications:read',
+      'implementation:read', 'implementation:update', 'implementation:notes',
     ],
     employee: [
       'dashboard:read', 'controls:read', 'assets:read', 'evidence:read',
       'evidence:create', 'notifications:read',
+      'implementation:read',
     ],
   };
 
@@ -174,7 +182,7 @@ async function main() {
   const modulePermissionsMap: Record<number, string[]> = {
     1: ['dashboard:read'],                              // Dashboard
     8: ['companies:read'],                              // Empresas
-    2: ['controls:read'],                               // Controles ISO
+    2: ['implementation:read'],                          // Implementación
     3: ['soa:read'],                                    // SoA
     4: ['assets:read'],                                 // Activos
     5: ['users:read', 'roles:read', 'controls:update', 'modules:manage'], // Administración
