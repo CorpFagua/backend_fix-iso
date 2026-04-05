@@ -135,7 +135,7 @@ async function main() {
   const modulesData = [
     { id: 1, name: 'Dashboard', route: '/dashboard', icon: 'DashboardOutlined', parentId: null, displayOrder: 1 },
     { id: 8, name: 'Empresas', route: '/companies', icon: 'BankOutlined', parentId: null, displayOrder: 2 },
-    { id: 2, name: 'Controles ISO', route: '/controls', icon: 'SafetyOutlined', parentId: null, displayOrder: 3 },
+    { id: 2, name: 'Implementación', route: '/implementation', icon: 'SafetyOutlined', parentId: null, displayOrder: 3 },
     { id: 3, name: 'Declaración de Aplicabilidad', route: '/soa', icon: 'FileProtectOutlined', parentId: null, displayOrder: 4 },
     { id: 4, name: 'Activos', route: '/assets', icon: 'DatabaseOutlined', parentId: null, displayOrder: 5 },
     { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 6 },

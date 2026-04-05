@@ -269,22 +269,108 @@ export async function getSoA(companyId: number): Promise<SoAEntryModel[]> {
     orderBy: { control: { code: 'asc' } },
   });
 
-  return entries.map((e): SoAEntryModel => ({
-    controlId: e.controlId,
-    code: e.control.code,
-    title: e.control.title,
-    themeName: e.control.theme.name,
-    applicable: e.applicable,
-    justification: e.justification,
-    implementationStatus: e.implementationStatus,
-  }));
+  // Fetch implementation progress for all applicable controls in one query
+  const applicableControlIds = entries.filter(e => e.applicable).map(e => e.controlId);
+  const companyControls = applicableControlIds.length > 0
+    ? await prisma.companyControl.findMany({
+        where: { companyId, controlId: { in: applicableControlIds } },
+        include: {
+          implementationTasks: { select: { status: true } },
+          _count: { select: { implementationNotes: true } },
+        },
+      })
+    : [];
+
+  const ccMap = new Map(companyControls.map(cc => [cc.controlId, cc]));
+
+  return entries.map((e): SoAEntryModel => {
+    const cc = ccMap.get(e.controlId);
+    const tasks = cc?.implementationTasks ?? [];
+    const tasksCompleted = tasks.filter(t => t.status === 'completed').length;
+    const progressPercentage = tasks.length > 0 ? Math.round((tasksCompleted / tasks.length) * 100) : 0;
+
+    return {
+      controlId: e.controlId,
+      code: e.control.code,
+      title: e.control.title,
+      themeName: e.control.theme.name,
+      applicable: e.applicable,
+      justification: e.justification,
+      implementationStatus: e.implementationStatus,
+      progressPercentage,
+      tasksCompleted,
+      notesCount: cc?._count.implementationNotes ?? 0,
+    };
+  });
 }
 
+const IMPLEMENTATION_DIMENSIONS = ['policy', 'procedures', 'technical', 'evidence', 'training', 'monitoring'];
+
 export async function updateSoA(companyId: number, controlId: number, input: UpdateSoAInput): Promise<void> {
+  const current = await prisma.statementOfApplicability.findUnique({
+    where: { companyId_controlId: { companyId, controlId } },
+  });
+
+  const wasApplicable = current?.applicable ?? false;
+  const willBeApplicable = input.applicable;
+
+  // ── Deactivating a previously applicable control ──────────────────────────
+  if (wasApplicable && !willBeApplicable) {
+    if (!input.forceDeactivate) {
+      // Check for implementation progress before allowing deactivation
+      const cc = await prisma.companyControl.findUnique({
+        where: { companyId_controlId: { companyId, controlId } },
+        include: {
+          implementationTasks: { select: { status: true } },
+          _count: { select: { implementationNotes: true } },
+        },
+      });
+
+      if (cc) {
+        const tasksCompleted = cc.implementationTasks.filter(t => t.status === 'completed').length;
+        const tasksInProgress = cc.implementationTasks.filter(t => t.status === 'in_progress').length;
+        const notesCount = cc._count.implementationNotes;
+
+        if (tasksCompleted > 0 || tasksInProgress > 0 || notesCount > 0) {
+          const err = Object.assign(new Error('Control has implementation progress'), {
+            code: 'SOA_DEACTIVATE_CONFLICT' as const,
+            impact: { tasksCompleted, tasksInProgress, notesCount },
+          });
+          throw err;
+        }
+      }
+    }
+
+    // Delete CompanyControl — cascades to implementation_tasks and implementation_notes
+    await prisma.companyControl.deleteMany({ where: { companyId, controlId } });
+  }
+
+  // ── Activating a previously non-applicable control ────────────────────────
+  if (!wasApplicable && willBeApplicable) {
+    const exists = await prisma.companyControl.findUnique({
+      where: { companyId_controlId: { companyId, controlId } },
+    });
+
+    if (!exists) {
+      const newCC = await prisma.companyControl.create({
+        data: { companyId, controlId, status: 'pending', maturityLevel: 'initial', compliancePercentage: 0 },
+      });
+      await prisma.implementationTask.createMany({
+        data: IMPLEMENTATION_DIMENSIONS.map(dimension => ({
+          companyControlId: newCC.id,
+          dimension,
+          status: 'not_started',
+        })),
+      });
+    }
+  }
+
+  // ── Persist the SoA change ────────────────────────────────────────────────
+  const { forceDeactivate: _, ...soaData } = input;
   await prisma.statementOfApplicability.upsert({
     where: { companyId_controlId: { companyId, controlId } },
-    update: input,
-    create: { companyId, controlId, ...input },
+    update: soaData,
+    create: { companyId, controlId, ...soaData },
   });
 }
 
@@ -403,11 +489,24 @@ export async function generateCompanyControls(companyId: number): Promise<Genera
     data: soaData,
   });
 
-  // Batch create CompanyControl entries (only applicable ones)
+  // Batch create CompanyControl entries (only applicable ones) and their 6 implementation tasks
   if (companyControlData.length > 0) {
     await prisma.companyControl.createMany({
       data: companyControlData,
     });
+
+    // Fetch the created CompanyControls to get their IDs
+    const createdControls = await prisma.companyControl.findMany({
+      where: { companyId, controlId: { in: companyControlData.map(d => d.controlId) } },
+      select: { id: true },
+    });
+
+    const DIMENSIONS = ['policy', 'procedures', 'technical', 'evidence', 'training', 'monitoring'];
+    const tasksData = createdControls.flatMap(cc =>
+      DIMENSIONS.map(dimension => ({ companyControlId: cc.id, dimension, status: 'not_started' })),
+    );
+
+    await prisma.implementationTask.createMany({ data: tasksData });
   }
 
   return {

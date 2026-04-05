@@ -78,8 +78,21 @@ export async function listSoA(req: Request, res: Response) {
 export async function updateSoA(req: Request, res: Response) {
   const companyId = parseInt(String(req.params.companyId));
   const controlId = parseInt(String(req.params.controlId));
-  await controlsService.updateSoA(companyId, controlId, req.body);
-  res.json({ success: true });
+  try {
+    await controlsService.updateSoA(companyId, controlId, req.body);
+    res.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && (error as { code?: string }).code === 'SOA_DEACTIVATE_CONFLICT') {
+      const err = error as unknown as { code: string; impact: { tasksCompleted: number; tasksInProgress: number; notesCount: number } };
+      res.status(409).json({
+        error: 'El control tiene progreso de implementación registrado',
+        code: 'SOA_DEACTIVATE_CONFLICT',
+        impact: err.impact,
+      });
+      return;
+    }
+    throw error;
+  }
 }
 
 // ── Auto-generation of Controls ──
