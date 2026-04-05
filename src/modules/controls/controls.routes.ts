@@ -8,6 +8,9 @@ router.use(authMiddleware);
 
 // ISO Catalog (no company scope)
 router.get('/themes', ctrl.listThemes);
+router.get('/applicability', ctrl.listApplicabilityRules);
+router.put('/applicability/:id', ctrl.updateApplicabilityRule);
+router.delete('/applicability/:id', ctrl.deleteApplicabilityRule);
 router.get('/', ctrl.listCatalogControls);
 router.get('/:id', ctrl.getCatalogControl);
 router.put('/:id', ctrl.updateCatalogControlHandler);
@@ -24,3 +27,7 @@ companyControlsRouter.put('/controls/:controlId', ctrl.updateCompanyControl);
 companyControlsRouter.delete('/controls/:controlId', ctrl.removeControl);
 companyControlsRouter.get('/soa', ctrl.listSoA);
 companyControlsRouter.put('/soa/:controlId', ctrl.updateSoA);
+
+// Auto-generation routes
+companyControlsRouter.post('/generate-controls', ctrl.generateControls);
+companyControlsRouter.post('/regenerate-controls', ctrl.regenerateControls);

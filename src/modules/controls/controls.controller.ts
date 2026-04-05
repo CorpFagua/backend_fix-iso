@@ -78,6 +78,74 @@ export async function listSoA(req: Request, res: Response) {
 export async function updateSoA(req: Request, res: Response) {
   const companyId = parseInt(String(req.params.companyId));
   const controlId = parseInt(String(req.params.controlId));
-  await controlsService.updateSoA(companyId, controlId, req.body);
-  res.json({ success: true });
+  try {
+    await controlsService.updateSoA(companyId, controlId, req.body);
+    res.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && (error as { code?: string }).code === 'SOA_DEACTIVATE_CONFLICT') {
+      const err = error as unknown as { code: string; impact: { tasksCompleted: number; tasksInProgress: number; notesCount: number } };
+      res.status(409).json({
+        error: 'El control tiene progreso de implementación registrado',
+        code: 'SOA_DEACTIVATE_CONFLICT',
+        impact: err.impact,
+      });
+      return;
+    }
+    throw error;
+  }
+}
+
+// ── Auto-generation of Controls ──
+
+export async function generateControls(req: Request, res: Response) {
+  const companyId = parseInt(String(req.params.companyId));
+  try {
+    const result = await controlsService.generateCompanyControls(companyId);
+    res.status(201).json({ data: result });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('already has generated controls')) {
+      res.status(409).json({ error: error.message });
+    } else {
+      throw error;
+    }
+  }
+}
+
+export async function regenerateControls(req: Request, res: Response) {
+  const companyId = parseInt(String(req.params.companyId));
+  const confirm = req.body.confirm === true;
+
+  if (!confirm) {
+    res.status(400).json({ error: 'Regeneration requires confirmation (confirm=true in body)' });
+    return;
+  }
+
+  const result = await controlsService.regenerateCompanyControls(companyId, confirm);
+  res.status(200).json({ data: result });
+}
+
+// ── Control Applicability Rules (admin CRUD) ──
+
+export async function listApplicabilityRules(req: Request, res: Response) {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const sectorId = req.query.sectorId ? parseInt(req.query.sectorId as string) : undefined;
+  const sizeId = req.query.sizeId ? parseInt(req.query.sizeId as string) : undefined;
+  const search = req.query.search as string | undefined;
+
+  const result = await controlsService.listApplicabilityRules({ page, limit, sectorId, sizeId, search });
+  res.json(result);
+}
+
+export async function updateApplicabilityRule(req: Request, res: Response) {
+  const id = parseInt(String(req.params.id));
+  const { priority, mandatory } = req.body as { priority?: number; mandatory?: boolean };
+  const data = await controlsService.updateApplicabilityRule(id, { priority, mandatory });
+  res.json({ data });
+}
+
+export async function deleteApplicabilityRule(req: Request, res: Response) {
+  const id = parseInt(String(req.params.id));
+  await controlsService.deleteApplicabilityRule(id);
+  res.status(204).end();
 }

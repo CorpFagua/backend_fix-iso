@@ -44,6 +44,9 @@ export interface SoAEntryModel {
   applicable: boolean;
   justification: string | null;
   implementationStatus: string;
+  progressPercentage: number;
+  tasksCompleted: number;
+  notesCount: number;
 }
 
 export type CompanyControlStatus =
@@ -81,6 +84,12 @@ export interface UpdateSoAInput {
   applicable: boolean;
   justification?: string;
   implementationStatus?: string;
+  forceDeactivate?: boolean;
+}
+
+export interface SoADeactivateConflictError extends Error {
+  code: 'SOA_DEACTIVATE_CONFLICT';
+  impact: { tasksCompleted: number; tasksInProgress: number; notesCount: number };
 }
 
 export interface PaginatedResult<T> {
