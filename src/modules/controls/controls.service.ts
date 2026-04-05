@@ -287,3 +287,255 @@ export async function updateSoA(companyId: number, controlId: number, input: Upd
     create: { companyId, controlId, ...input },
   });
 }
+
+// ── Auto-generation of Controls ─────────────────────────────
+
+export interface GenerateControlsResult {
+  total: number;
+  applicable: number;
+  mandatory: number;
+  recommended: number;
+}
+
+/**
+ * Generate control applicability and company controls for a company based on sector + size
+ * Creates StatementOfApplicability entries for all 93 controls (applicable=true/false)
+ * Creates CompanyControl entries only for applicable controls (status=pending, maturity=initial)
+ */
+export async function generateCompanyControls(companyId: number): Promise<GenerateControlsResult> {
+  // Get company to fetch sector and size
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    include: { sector: { select: { name: true } }, size: { select: { name: true } } },
+  });
+
+  if (!company) {
+    throw new Error(`Company with id ${companyId} not found`);
+  }
+
+  // Check if company already has controls generated (SoA entries exist)
+  const existingSoA = await prisma.statementOfApplicability.count({
+    where: { companyId },
+  });
+
+  if (existingSoA > 0) {
+    throw new Error(`Company ${companyId} already has generated controls. Use regenerate to replace them.`);
+  }
+
+  // Get all ISO controls
+  const allControls = await prisma.isoControl.findMany({
+    orderBy: { id: 'asc' },
+  });
+
+  // Get applicability rules for this sector + size combination
+  const applicabilityRules = await prisma.controlApplicability.findMany({
+    where: {
+      sectorId: company.sectorId,
+      sizeId: company.sizeId,
+    },
+  });
+
+  // Create a map for quick lookup: controlId => rule
+  const rulesMap = new Map(applicabilityRules.map((r) => [r.controlId, r]));
+
+  // Prepare SoA and CompanyControl data
+  const soaData: Array<{
+    companyId: number;
+    controlId: number;
+    applicable: boolean;
+    justification: string;
+    implementationStatus: string;
+  }> = [];
+
+  const companyControlData: Array<{
+    companyId: number;
+    controlId: number;
+    status: string;
+    maturityLevel: string;
+    compliancePercentage: number;
+  }> = [];
+
+  let applicable = 0;
+  let mandatory = 0;
+
+  for (const control of allControls) {
+    const rule = rulesMap.get(control.id);
+
+    if (rule) {
+      // Control is applicable
+      applicable++;
+      if (rule.mandatory) mandatory++;
+
+      // Create justification text
+      const priorityLabel = rule.priority === 1 ? 'Alta' : rule.priority === 2 ? 'Media' : 'Baja';
+      const mandatoryLabel = rule.mandatory ? 'Obligatorio' : 'Recomendado';
+      const justification = `Aplicable según perfil: sector ${company.sector.name}, tamaño ${company.size.name}. Prioridad: ${priorityLabel}. ${mandatoryLabel}.`;
+
+      soaData.push({
+        companyId,
+        controlId: control.id,
+        applicable: true,
+        justification,
+        implementationStatus: 'pending',
+      });
+
+      companyControlData.push({
+        companyId,
+        controlId: control.id,
+        status: 'pending',
+        maturityLevel: 'initial',
+        compliancePercentage: 0,
+      });
+    } else {
+      // Control is not applicable for this sector/size
+      soaData.push({
+        companyId,
+        controlId: control.id,
+        applicable: false,
+        justification: `No requerido según perfil de empresa (sector ${company.sector.name}, tamaño ${company.size.name}). Puede habilitarse manualmente si es necesario.`,
+        implementationStatus: 'not_applicable',
+      });
+    }
+  }
+
+  // Batch create SoA entries
+  await prisma.statementOfApplicability.createMany({
+    data: soaData,
+  });
+
+  // Batch create CompanyControl entries (only applicable ones)
+  if (companyControlData.length > 0) {
+    await prisma.companyControl.createMany({
+      data: companyControlData,
+    });
+  }
+
+  return {
+    total: allControls.length,
+    applicable,
+    mandatory,
+    recommended: applicable - mandatory,
+  };
+}
+
+/**
+ * Regenerate control applicability for a company (delete existing, then generate new)
+ * Requires confirmation flag to prevent accidental deletion
+ */
+export async function regenerateCompanyControls(companyId: number, confirm = false): Promise<GenerateControlsResult> {
+  if (!confirm) {
+    throw new Error('Regeneration requires confirmation (confirm=true)');
+  }
+
+  // Delete existing SoA and CompanyControl entries
+  await prisma.statementOfApplicability.deleteMany({
+    where: { companyId },
+  });
+
+  await prisma.companyControl.deleteMany({
+    where: { companyId },
+  });
+
+  // Generate new controls
+  return generateCompanyControls(companyId);
+}
+
+// ── Control Applicability Rules (admin CRUD) ─────────────────────────────
+
+export interface ApplicabilityRuleItem {
+  id: number;
+  controlId: number;
+  controlCode: string;
+  controlTitle: string;
+  sectorId: number;
+  sectorName: string;
+  sizeId: number;
+  sizeName: string;
+  priority: number;
+  mandatory: boolean;
+}
+
+export interface ApplicabilityFilter {
+  sectorId?: number;
+  sizeId?: number;
+  search?: string;
+  page: number;
+  limit: number;
+}
+
+export async function listApplicabilityRules(filter: ApplicabilityFilter): Promise<PaginatedResult<ApplicabilityRuleItem>> {
+  const where: Record<string, unknown> = {};
+  if (filter.sectorId) where.sectorId = filter.sectorId;
+  if (filter.sizeId) where.sizeId = filter.sizeId;
+  if (filter.search) {
+    where.control = {
+      OR: [
+        { code: { contains: filter.search, mode: 'insensitive' } },
+        { title: { contains: filter.search, mode: 'insensitive' } },
+      ],
+    };
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.controlApplicability.count({ where }),
+    prisma.controlApplicability.findMany({
+      where,
+      include: {
+        control: { select: { code: true, title: true } },
+        sector: { select: { name: true } },
+        size: { select: { name: true } },
+      },
+      skip: (filter.page - 1) * filter.limit,
+      take: filter.limit,
+      orderBy: [{ sectorId: 'asc' }, { sizeId: 'asc' }, { control: { code: 'asc' } }],
+    }),
+  ]);
+
+  return {
+    data: items.map((r): ApplicabilityRuleItem => ({
+      id: r.id,
+      controlId: r.controlId,
+      controlCode: r.control.code,
+      controlTitle: r.control.title,
+      sectorId: r.sectorId,
+      sectorName: r.sector.name,
+      sizeId: r.sizeId,
+      sizeName: r.size.name,
+      priority: r.priority,
+      mandatory: r.mandatory,
+    })),
+    meta: { page: filter.page, limit: filter.limit, total, totalPages: Math.ceil(total / filter.limit) },
+  };
+}
+
+export async function updateApplicabilityRule(
+  id: number,
+  data: { priority?: number; mandatory?: boolean },
+): Promise<ApplicabilityRuleItem> {
+  const r = await prisma.controlApplicability.update({
+    where: { id },
+    data,
+    include: {
+      control: { select: { code: true, title: true } },
+      sector: { select: { name: true } },
+      size: { select: { name: true } },
+    },
+  });
+
+  return {
+    id: r.id,
+    controlId: r.controlId,
+    controlCode: r.control.code,
+    controlTitle: r.control.title,
+    sectorId: r.sectorId,
+    sectorName: r.sector.name,
+    sizeId: r.sizeId,
+    sizeName: r.size.name,
+    priority: r.priority,
+    mandatory: r.mandatory,
+  };
+}
+
+export async function deleteApplicabilityRule(id: number): Promise<void> {
+  await prisma.controlApplicability.delete({ where: { id } });
+}

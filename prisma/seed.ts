@@ -495,6 +495,28 @@ async function main() {
   console.log(`  ✓ ${isoControlsData.length} ISO 27001:2022 controls`);
 
   // ──────────────────────────────────────────────
+  // 13. CONTROL APPLICABILITY RULES (sector + size combinations)
+  // ──────────────────────────────────────────────
+  // Dynamic import of control applicability rules
+  const { generateControlApplicabilityRules } = await import('./data/controlApplicabilityRules.js');
+  const applicabilityRules = generateControlApplicabilityRules();
+
+  for (const rule of applicabilityRules) {
+    await prisma.controlApplicability.upsert({
+      where: {
+        controlId_sectorId_sizeId: {
+          controlId: rule.controlId,
+          sectorId: rule.sectorId,
+          sizeId: rule.sizeId,
+        },
+      },
+      update: {},
+      create: rule,
+    });
+  }
+  console.log(`  ✓ ${applicabilityRules.length} control applicability rules`);
+
+  // ──────────────────────────────────────────────
   // 14. STATEMENT OF APPLICABILITY (SoA) — TechCorp: all 93 applicable
   // ──────────────────────────────────────────────
   for (let i = 0; i < isoControlsData.length; i++) {
