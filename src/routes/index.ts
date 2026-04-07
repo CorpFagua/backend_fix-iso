@@ -9,6 +9,7 @@ import adminRoutes from '../modules/admin/admin.routes';
 import assetsRoutes from '../modules/assets/assets.routes';
 import implementationRoutes from '../modules/implementation/implementation.routes';
 import auditsRoutes from '../modules/audits/audits.routes';
+import { trainingsAdminRouter, trainingsCompanyRouter } from '../modules/trainings/trainings.routes';
 
 const router = Router();
 
@@ -18,10 +19,12 @@ router.use('/companies/:companyId', companyControlsRouter);
 router.use('/companies/:companyId', assetsRoutes);
 router.use('/companies/:companyId', auditsRoutes);
 router.use('/companies/:companyId/implementation', implementationRoutes);
+router.use('/companies/:companyId', trainingsCompanyRouter);
 router.use('/catalogs', catalogsRoutes);
 router.use('/controls', controlsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/users', usersRoutes);
 router.use('/', adminRoutes);
+router.use('/', trainingsAdminRouter);
 
 export default router;

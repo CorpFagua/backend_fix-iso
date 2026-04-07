@@ -54,6 +54,13 @@ async function main() {
     { name: 'implementation:delete', description: 'Eliminar datos de implementación', module: 'implementation' },
     // Audits module (checklist)
     { name: 'audits:delete', description: 'Eliminar auditorías', module: 'audits' },
+    // Trainings module
+    { name: 'trainings:read', description: 'Ver capacitaciones', module: 'trainings' },
+    { name: 'trainings:create', description: 'Crear capacitaciones', module: 'trainings' },
+    { name: 'trainings:update', description: 'Actualizar capacitaciones', module: 'trainings' },
+    { name: 'trainings:delete', description: 'Eliminar capacitaciones', module: 'trainings' },
+    { name: 'trainings:assign', description: 'Asignar capacitaciones a empresas', module: 'trainings' },
+    { name: 'trainings:enroll', description: 'Marcar progreso de capacitación', module: 'trainings' },
   ];
 
   const permissions: { id: number; name: string; description: string | null; module: string }[] = [];
@@ -111,6 +118,7 @@ async function main() {
       'assets:read', 'audits:read', 'audits:create', 'audits:update', 'audits:delete',
       'risk:read', 'evidence:read', 'notifications:read',
       'implementation:read',
+      'trainings:read', 'trainings:enroll',
     ],
     consultant: [
       'dashboard:read', 'companies:read', 'controls:read', 'controls:update', 'controls:export',
@@ -118,11 +126,13 @@ async function main() {
       'risk:read', 'risk:create', 'risk:update', 'evidence:read', 'evidence:create',
       'notifications:read',
       'implementation:read', 'implementation:update', 'implementation:notes',
+      'trainings:read', 'trainings:enroll',
     ],
     employee: [
       'dashboard:read', 'controls:read', 'assets:read', 'evidence:read',
       'evidence:create', 'notifications:read',
       'implementation:read',
+      'trainings:read', 'trainings:enroll',
     ],
   };
 
@@ -148,8 +158,9 @@ async function main() {
     { id: 2, name: 'Implementación', route: '/implementation', icon: 'SafetyOutlined', parentId: null, displayOrder: 3 },
     { id: 3, name: 'Declaración de Aplicabilidad', route: '/soa', icon: 'FileProtectOutlined', parentId: null, displayOrder: 4 },
     { id: 4, name: 'Activos', route: '/assets', icon: 'DatabaseOutlined', parentId: null, displayOrder: 5 },
-    { id: 11, name: 'Auditorías', route: '/audits', icon: 'FileSearchOutlined', parentId: null, displayOrder: 6 },
-    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 7 },
+    { id: 12, name: 'Auditorías', route: '/audits', icon: 'FileSearchOutlined', parentId: null, displayOrder: 6 },
+    { id: 11, name: 'Capacitaciones', route: '/trainings', icon: 'ReadOutlined', parentId: null, displayOrder: 7},
+    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 8 },
   ];
 
   // Insert parent modules first (no parentId dependency)
@@ -167,6 +178,7 @@ async function main() {
     { id: 7, name: 'Roles y Permisos', route: '/admin/roles', icon: 'LockOutlined', parentId: 5, displayOrder: 2 },
     { id: 9, name: 'Catálogo ISO', route: '/catalog', icon: 'BookOutlined', parentId: 5, displayOrder: 3 },
     { id: 10, name: 'Módulos y Permisos', route: '/admin/modules', icon: 'AppstoreOutlined', parentId: 5, displayOrder: 4 },
+    { id: 12, name: 'Crear Capacitaciones', route: '/admin/trainings', icon: 'ReadOutlined', parentId: 5, displayOrder: 5 },
   ];
 
   for (const m of childModules) {
@@ -176,7 +188,7 @@ async function main() {
       create: m,
     });
   }
-  console.log('  ✓ 10 modules');
+  console.log('  ✓ 12 modules');
 
   // ──────────────────────────────────────────────
   // 5. MODULE_PERMISSIONS
@@ -189,11 +201,13 @@ async function main() {
     3: ['soa:read'],                                    // SoA
     4: ['assets:read'],                                 // Activos
     11: ['audits:read'],                                  // Auditorías
-    5: ['users:read', 'roles:read', 'controls:update', 'modules:manage'], // Administración
+    5: ['users:read', 'roles:read', 'controls:update', 'modules:manage', 'trainings:create'], // Administración
     6: ['users:read'],                                  // Usuarios (child)
     7: ['roles:read'],                                  // Roles y Permisos (child)
     9: ['controls:update'],                             // Catálogo ISO (child)
     10: ['modules:manage'],                              // Módulos y Permisos (child)
+    11: ['trainings:read'],                              // Capacitaciones (sidebar)
+    12: ['trainings:create'],                            // Crear Capacitaciones (admin child)
   };
 
   for (const [modId, permNames] of Object.entries(modulePermissionsMap)) {
@@ -677,44 +691,100 @@ async function main() {
   console.log('  ✓ 2 risk assessments');
 
   // ──────────────────────────────────────────────
-  // 20. TRAININGS
+  // 20. TRAININGS (global, created by admin)
   // ──────────────────────────────────────────────
   const training1 = await prisma.training.create({
     data: {
-      companyId: 1,
-      trainerId: 1,
       title: 'Fundamentos ISO 27001:2022',
-      description: 'Capacitación introductoria sobre el SGSI y los requisitos de la norma ISO 27001:2022.',
-      trainingType: 'awareness',
-      date: new Date('2026-02-15'),
-      status: 'completed',
+      description: 'Capacitación introductoria sobre el SGSI y los requisitos de la norma ISO 27001:2022. Cubre los conceptos fundamentales de seguridad de la información, el ciclo PHVA y los requisitos clave de la norma.',
+      trainingType: 'ORGANIZATIONAL',
+      createdBy: 1,
+      resourcesJson: [
+        { id: 'r1', type: 'url', url: 'https://www.iso.org/standard/27001', title: 'Norma ISO 27001 - Sitio oficial' },
+        { id: 'r2', type: 'pdf', filename: 'guia-sgsi-fundamentos.pdf', title: 'Guía de fundamentos SGSI' },
+        { id: 'r3', type: 'video', url: 'https://www.youtube.com/watch?v=example1', title: 'Video introductorio ISO 27001' },
+      ],
     },
   });
 
   const training2 = await prisma.training.create({
     data: {
-      companyId: 1,
-      trainerId: 4,
       title: 'Gestión de riesgos de seguridad',
-      description: 'Taller práctico sobre identificación, evaluación y tratamiento de riesgos.',
-      trainingType: 'workshop',
-      date: new Date('2026-04-10'),
-      status: 'scheduled',
+      description: 'Taller práctico sobre identificación, evaluación y tratamiento de riesgos según ISO 27005. Incluye ejercicios de análisis de amenazas y vulnerabilidades.',
+      trainingType: 'ORGANIZATIONAL',
+      createdBy: 1,
+      resourcesJson: [
+        { id: 'r4', type: 'pdf', filename: 'metodologia-riesgos.pdf', title: 'Metodología de evaluación de riesgos' },
+        { id: 'r5', type: 'url', url: 'https://example.com/risk-matrix', title: 'Plantilla matriz de riesgos' },
+      ],
     },
   });
 
-  // Training attendees (external client personnel)
-  const attendeesT1 = [
-    { trainingId: training1.id, attendeeName: 'Juan Pérez', attendeeEmail: 'juan.perez@techcorp.com', attended: true },
-    { trainingId: training1.id, attendeeName: 'María López', attendeeEmail: 'maria.lopez@techcorp.com', attended: true },
-    { trainingId: training1.id, attendeeName: 'Roberto Gómez', attendeeEmail: 'roberto.gomez@techcorp.com', attended: false },
-    { trainingId: training1.id, attendeeName: 'Ana Martínez', attendeeEmail: 'ana.martinez@techcorp.com', attended: true },
-  ];
+  const training3 = await prisma.training.create({
+    data: {
+      title: 'Seguridad física y ambiental',
+      description: 'Capacitación sobre controles físicos para la protección de instalaciones, equipos y perímetros de seguridad.',
+      trainingType: 'PHYSICAL',
+      createdBy: 1,
+      resourcesJson: [
+        { id: 'r6', type: 'video', url: 'https://www.youtube.com/watch?v=example2', title: 'Controles de acceso físico' },
+      ],
+    },
+  });
 
-  for (const att of attendeesT1) {
-    await prisma.trainingAttendee.create({ data: att });
-  }
-  console.log('  ✓ 2 trainings with attendees');
+  const training4 = await prisma.training.create({
+    data: {
+      title: 'Concienciación en ciberseguridad para empleados',
+      description: 'Programa de formación en seguridad orientado a todo el personal. Cubre phishing, contraseñas seguras, ingeniería social y buenas prácticas.',
+      trainingType: 'PEOPLE',
+      createdBy: 1,
+      resourcesJson: [
+        { id: 'r7', type: 'url', url: 'https://example.com/phishing-simulator', title: 'Simulador de phishing' },
+        { id: 'r8', type: 'pdf', filename: 'guia-contrasenas-seguras.pdf', title: 'Guía de contraseñas seguras' },
+        { id: 'r9', type: 'video', url: 'https://www.youtube.com/watch?v=example3', title: 'Ingeniería social - Cómo protegerse' },
+      ],
+    },
+  });
+
+  const training5 = await prisma.training.create({
+    data: {
+      title: 'Hardening de servidores y redes',
+      description: 'Capacitación técnica sobre configuración segura de servidores, firewalls, segmentación de redes y gestión de vulnerabilidades.',
+      trainingType: 'TECHNOLOGICAL',
+      createdBy: 4,
+      resourcesJson: [
+        { id: 'r10', type: 'pdf', filename: 'checklist-hardening.pdf', title: 'Checklist de hardening' },
+        { id: 'r11', type: 'url', url: 'https://example.com/cis-benchmarks', title: 'CIS Benchmarks' },
+      ],
+    },
+  });
+
+  // Assign trainings to companies
+  const ct1 = await prisma.companyTraining.create({
+    data: { trainingId: training1.id, companyId: 1, assignedBy: 1 },
+  });
+  const ct2 = await prisma.companyTraining.create({
+    data: { trainingId: training2.id, companyId: 1, assignedBy: 1 },
+  });
+  const ct3 = await prisma.companyTraining.create({
+    data: { trainingId: training4.id, companyId: 1, assignedBy: 1 },
+  });
+  const ct4 = await prisma.companyTraining.create({
+    data: { trainingId: training1.id, companyId: 2, assignedBy: 1 },
+  });
+
+  // User enrollments
+  await prisma.trainingUserEnrollment.createMany({
+    data: [
+      { companyTrainingId: ct1.id, userId: 2, status: 'COMPLETED', completedAt: new Date('2026-03-01') },
+      { companyTrainingId: ct1.id, userId: 5, status: 'COMPLETED', completedAt: new Date('2026-03-05') },
+      { companyTrainingId: ct2.id, userId: 2, status: 'PENDING' },
+      { companyTrainingId: ct2.id, userId: 4, status: 'PENDING' },
+      { companyTrainingId: ct3.id, userId: 5, status: 'PENDING' },
+      { companyTrainingId: ct4.id, userId: 3, status: 'PENDING' },
+    ],
+  });
+  console.log('  ✓ 5 trainings, 4 company assignments, 6 enrollments');
 
   // ──────────────────────────────────────────────
   // 21. NOTIFICATIONS — sample notifications

@@ -8,6 +8,18 @@ datasource db {
 }
 
 // ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
+enum TrainingType {
+  ORGANIZATIONAL
+  PEOPLE
+  PHYSICAL
+  TECHNOLOGICAL
+  PROCESS
+}
+
+// ──────────────────────────────────────────────
 // AUTH & RBAC
 // ──────────────────────────────────────────────
 
@@ -35,7 +47,9 @@ model User {
   ownedAssets        Asset[]            @relation("AssetOwner")
   custodianAssets    Asset[]            @relation("AssetCustodian")
   riskAssessedBy     AssetRiskAssessment[]
-  trainingsGiven     Training[]
+  createdTrainings   Training[]
+  trainingEnrollments TrainingUserEnrollment[]
+  assignedCompanyTrainings CompanyTraining[] @relation("AssignedByUser")
   notifications      Notification[]
 
   @@map("users")
@@ -197,8 +211,8 @@ model Company {
   companyControls CompanyControl[]
   assets          Asset[]
   audits          Audit[]
-  riskAssessments RiskAssessment[]
-  trainings       Training[]
+  riskAssessments  RiskAssessment[]
+  companyTrainings CompanyTraining[]
 
   @@index([sectorId])
   @@index([sizeId])
@@ -484,34 +498,55 @@ model RiskAssessment {
 // ──────────────────────────────────────────────
 
 model Training {
-  id           Int      @id @default(autoincrement())
-  companyId    Int      @map("company_id")
-  trainerId    Int      @map("trainer_id")
-  title        String   @db.VarChar(255)
-  description  String?
-  trainingType String   @map("training_type") @db.VarChar(30)
-  date         DateTime
-  status       String   @default("scheduled") @db.VarChar(20)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            Int          @id @default(autoincrement())
+  title         String       @db.VarChar(255)
+  description   String?
+  trainingType  TrainingType @map("training_type")
+  resourcesJson Json         @default("[]") @map("resources_json")
+  createdBy     Int          @map("created_by")
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  trainer   User                @relation(fields: [trainerId], references: [id])
-  attendees TrainingAttendee[]
+  creator          User              @relation(fields: [createdBy], references: [id])
+  companyTrainings CompanyTraining[]
 
-  @@index([companyId])
+  @@index([createdBy])
   @@map("trainings")
 }
 
-model TrainingAttendee {
-  trainingId    Int     @map("training_id")
-  attendeeName  String  @map("attendee_name") @db.VarChar(150)
-  attendeeEmail String? @map("attendee_email") @db.VarChar(255)
-  attended      Boolean @default(false)
+model CompanyTraining {
+  id         Int      @id @default(autoincrement())
+  trainingId Int      @map("training_id")
+  companyId  Int      @map("company_id")
+  assignedBy Int      @map("assigned_by")
+  assignedAt DateTime @default(now()) @map("assigned_at")
 
-  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  training       Training                  @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  company        Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedByUser User                      @relation("AssignedByUser", fields: [assignedBy], references: [id])
+  enrollments    TrainingUserEnrollment[]
 
-  @@id([trainingId, attendeeName])
-  @@map("training_attendees")
+  @@unique([trainingId, companyId])
+  @@index([companyId])
+  @@map("company_trainings")
+}
+
+model TrainingUserEnrollment {
+  id                Int       @id @default(autoincrement())
+  companyTrainingId Int       @map("company_training_id")
+  userId            Int       @map("user_id")
+  enrolledAt        DateTime  @default(now()) @map("enrolled_at")
+  status            String    @default("PENDING") @db.VarChar(20)
+  completedAt       DateTime? @map("completed_at")
+  notes             String?
+
+  companyTraining CompanyTraining @relation(fields: [companyTrainingId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@unique([companyTrainingId, userId])
+  @@index([userId])
+  @@map("training_user_enrollments")
 }
 
 // ──────────────────────────────────────────────
