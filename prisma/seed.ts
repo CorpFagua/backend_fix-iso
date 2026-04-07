@@ -52,6 +52,8 @@ async function main() {
     { name: 'implementation:update', description: 'Actualizar tareas y progreso de implementación', module: 'implementation' },
     { name: 'implementation:notes', description: 'Gestionar notas de seguimiento de implementación', module: 'implementation' },
     { name: 'implementation:delete', description: 'Eliminar datos de implementación', module: 'implementation' },
+    // Audits module (checklist)
+    { name: 'audits:delete', description: 'Eliminar auditorías', module: 'audits' },
   ];
 
   const permissions: { id: number; name: string; description: string | null; module: string }[] = [];
@@ -106,7 +108,7 @@ async function main() {
     admin: permissions.filter(p => p.module !== 'audit_log' && p.module !== 'modules' && p.module !== 'permissions').map(p => p.name),
     auditor: [
       'dashboard:read', 'companies:read', 'controls:read', 'controls:export', 'soa:read',
-      'assets:read', 'audits:read', 'audits:create', 'audits:update',
+      'assets:read', 'audits:read', 'audits:create', 'audits:update', 'audits:delete',
       'risk:read', 'evidence:read', 'notifications:read',
       'implementation:read',
     ],
@@ -146,7 +148,8 @@ async function main() {
     { id: 2, name: 'Implementación', route: '/implementation', icon: 'SafetyOutlined', parentId: null, displayOrder: 3 },
     { id: 3, name: 'Declaración de Aplicabilidad', route: '/soa', icon: 'FileProtectOutlined', parentId: null, displayOrder: 4 },
     { id: 4, name: 'Activos', route: '/assets', icon: 'DatabaseOutlined', parentId: null, displayOrder: 5 },
-    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 6 },
+    { id: 11, name: 'Auditorías', route: '/audits', icon: 'FileSearchOutlined', parentId: null, displayOrder: 6 },
+    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 7 },
   ];
 
   // Insert parent modules first (no parentId dependency)
@@ -185,6 +188,7 @@ async function main() {
     2: ['implementation:read'],                          // Implementación
     3: ['soa:read'],                                    // SoA
     4: ['assets:read'],                                 // Activos
+    11: ['audits:read'],                                  // Auditorías
     5: ['users:read', 'roles:read', 'controls:update', 'modules:manage'], // Administración
     6: ['users:read'],                                  // Usuarios (child)
     7: ['roles:read'],                                  // Roles y Permisos (child)
