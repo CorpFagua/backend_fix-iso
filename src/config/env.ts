@@ -10,6 +10,12 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  BIGDATA_API_URL: z.string().default('http://localhost:8000'),
+  GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY: z.string().optional(),
+  GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_FILE: z.string().optional(),
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: z.string().optional(),
+  GOOGLE_DRIVE_TEMPLATES_FOLDER_ID: z.string().optional(),
+  GOOGLE_DRIVE_COMPANIES_FOLDER_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

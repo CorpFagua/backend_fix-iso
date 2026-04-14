@@ -9,7 +9,18 @@ export interface DashboardStatsModel {
   totalAssets: number;
   highRiskAssets: number;
   upcomingAudits: number;
+  completedAudits: number;
+  evaluatedControls: number;
+  compliantControls: number;
   overallRiskLevel: RiskLevel | 'unknown';
+  implementationByDimension: DimensionProgress[];
+}
+
+export interface DimensionProgress {
+  dimension: string;
+  total: number;
+  completed: number;
+  percentage: number;
 }
 
 export interface ComplianceByThemeModel {

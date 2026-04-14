@@ -3,10 +3,12 @@ import { env } from './config/env';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { corsOptions } from './config/cors';
 import { globalLimiter } from './middleware/rateLimiter';
 import { logger } from './middleware/logger';
 import { errorHandler } from './middleware/errorHandler';
+import { authMiddleware } from './middleware/auth';
 import routes from './routes';
 
 const app = express();
@@ -28,6 +30,9 @@ app.use(logger);
 
 // ── API routes ──
 app.use('/api', routes);
+
+// ── Serve uploaded files (auth-protected) ──
+app.use('/uploads', authMiddleware, express.static(path.resolve(process.cwd(), 'uploads')));
 
 // ── Health check ──
 app.get('/health', (_req, res) => {
