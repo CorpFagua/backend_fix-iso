@@ -60,6 +60,15 @@ async function main() {
     { name: 'trainings:delete', description: 'Eliminar capacitaciones', module: 'trainings' },
     { name: 'trainings:assign', description: 'Asignar capacitaciones a empresas', module: 'trainings' },
     { name: 'trainings:enroll', description: 'Marcar progreso de capacitación', module: 'trainings' },
+    // BigData module
+    { name: 'bigdata:read', description: 'Ver inteligencia de amenazas BigData', module: 'bigdata' },
+    // Documents module
+    { name: 'documents:read', description: 'Ver documentos', module: 'documents' },
+    { name: 'documents:create', description: 'Crear y subir documentos', module: 'documents' },
+    { name: 'documents:edit', description: 'Editar documentos', module: 'documents' },
+    { name: 'documents:delete', description: 'Eliminar documentos', module: 'documents' },
+    // Reports module
+    { name: 'reports:download', description: 'Descargar informes', module: 'reports' },
   ];
 
   const permissions: { id: number; name: string; description: string | null; module: string }[] = [];
@@ -118,6 +127,9 @@ async function main() {
       'risk:read', 'evidence:read', 'notifications:read',
       'implementation:read',
       'trainings:read', 'trainings:enroll',
+      'bigdata:read',
+      'documents:read',
+      'reports:download',
     ],
     consultant: [
       'dashboard:read', 'companies:read', 'controls:read', 'controls:update', 'controls:export',
@@ -126,12 +138,16 @@ async function main() {
       'notifications:read',
       'implementation:read', 'implementation:update', 'implementation:notes',
       'trainings:read', 'trainings:enroll',
+      'bigdata:read',
+      'documents:read', 'documents:create', 'documents:edit',
+      'reports:download',
     ],
     employee: [
       'dashboard:read', 'controls:read', 'assets:read', 'evidence:read',
       'evidence:create', 'notifications:read',
       'implementation:read',
       'trainings:read', 'trainings:enroll',
+      'documents:read',
     ],
   };
 
@@ -159,7 +175,9 @@ async function main() {
     { id: 4, name: 'Activos', route: '/assets', icon: 'DatabaseOutlined', parentId: null, displayOrder: 5 },
     { id: 13, name: 'Auditorías', route: '/audits', icon: 'FileSearchOutlined', parentId: null, displayOrder: 6 },
     { id: 11, name: 'Capacitaciones', route: '/trainings', icon: 'ReadOutlined', parentId: null, displayOrder: 7},
-    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 8 },
+    { id: 14, name: 'Inteligencia de Amenazas', route: '/bigdata', icon: 'ThunderboltOutlined', parentId: null, displayOrder: 8 },
+    { id: 15, name: 'Documentos', route: '/documents', icon: 'FileTextOutlined', parentId: null, displayOrder: 9 },
+    { id: 5, name: 'Administración', route: '/admin', icon: 'SettingOutlined', parentId: null, displayOrder: 10 },
   ];
 
   // Insert parent modules first (no parentId dependency)
@@ -187,7 +205,7 @@ async function main() {
       create: m,
     });
   }
-  console.log('  ✓ 13 modules');
+  console.log('  ✓ 14 modules');
 
   // ──────────────────────────────────────────────
   // 5. MODULE_PERMISSIONS
@@ -207,6 +225,8 @@ async function main() {
     10: ['modules:manage'],                              // Módulos y Permisos (child)
     11: ['trainings:read'],                              // Capacitaciones (sidebar)
     12: ['trainings:create'],                            // Crear Capacitaciones (admin child)
+    14: ['bigdata:read'],                               // Inteligencia de Amenazas
+    15: ['documents:read'],                              // Documentos
   };
 
   for (const [modId, permNames] of Object.entries(modulePermissionsMap)) {

@@ -10,6 +10,9 @@ import assetsRoutes from '../modules/assets/assets.routes';
 import implementationRoutes from '../modules/implementation/implementation.routes';
 import auditsRoutes from '../modules/audits/audits.routes';
 import { trainingsAdminRouter, trainingsCompanyRouter } from '../modules/trainings/trainings.routes';
+import bigdataRoutes from '../modules/bigdata/bigdata.routes';
+import documentsRoutes from '../modules/documents/documents.routes';
+import reportsRoutes from '../modules/reports/reports.routes';
 
 const router = Router();
 
@@ -24,6 +27,9 @@ router.use('/catalogs', catalogsRoutes);
 router.use('/controls', controlsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/users', usersRoutes);
+router.use('/bigdata', bigdataRoutes);
+router.use('/documents', documentsRoutes);
+router.use('/reports', reportsRoutes);
 router.use('/', adminRoutes);
 router.use('/', trainingsAdminRouter);
 

@@ -19,6 +19,16 @@ enum TrainingType {
   PROCESS
 }
 
+enum DocumentType {
+  ACTA
+  REPORTE_AUDITORIA
+  EVIDENCIA
+  POLITICA
+  PLAN_TRATAMIENTO
+  INFORME_CAPACITACION
+  PLANTILLA
+}
+
 // ──────────────────────────────────────────────
 // AUTH & RBAC
 // ──────────────────────────────────────────────
@@ -51,6 +61,7 @@ model User {
   trainingEnrollments TrainingUserEnrollment[]
   assignedCompanyTrainings CompanyTraining[] @relation("AssignedByUser")
   notifications      Notification[]
+  createdDocuments Document[]       @relation("DocumentCreatedBy")
 
   @@map("users")
 }
@@ -213,6 +224,7 @@ model Company {
   audits          Audit[]
   riskAssessments  RiskAssessment[]
   companyTrainings CompanyTraining[]
+  documents       Document[]
 
   @@index([sectorId])
   @@index([sizeId])
@@ -567,4 +579,31 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+// ──────────────────────────────────────────────
+// DOCUMENTOS
+// ──────────────────────────────────────────────
+
+model Document {
+  id                Int          @id @default(autoincrement())
+  companyId         Int?         @map("company_id")
+  name              String       @db.VarChar(300)
+  description       String?
+  documentType      DocumentType @map("document_type")
+  driveFileId       String?      @map("drive_file_id") @db.VarChar(200)
+  driveUrl          String?      @map("drive_url") @db.VarChar(500)
+  driveFolderId     String?      @map("drive_folder_id") @db.VarChar(200)
+  relatedEntityType String?      @map("related_entity_type") @db.VarChar(50)
+  relatedEntityId   Int?         @map("related_entity_id")
+  createdById       Int          @map("created_by")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  @@index([companyId, documentType])
+  @@index([relatedEntityType, relatedEntityId])
+  @@map("documents")
 }
