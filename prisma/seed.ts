@@ -1,7 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+  transactionOptions: { maxWait: 30000, timeout: 120000 },
+});
 
 async function main() {
   console.log('Seeding database...');
@@ -558,6 +561,10 @@ async function main() {
       update: {},
       create: rule,
     });
+    // Small delay to prevent connection drops on remote DBs
+    if (applicabilityRules.indexOf(rule) % 50 === 49) {
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
   console.log(`  ✓ ${applicabilityRules.length} control applicability rules`);
 
