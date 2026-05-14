@@ -4,7 +4,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import swaggerUi from 'swagger-ui-express';
 import { corsOptions } from './config/cors';
+import { swaggerSpec } from './config/swagger';
 import { globalLimiter } from './middleware/rateLimiter';
 import { logger } from './middleware/logger';
 import { errorHandler } from './middleware/errorHandler';
@@ -13,8 +15,12 @@ import routes from './routes';
 
 const app = express();
 
-// ── Security headers ──
-app.use(helmet());
+// ── Security headers (relaxed CSP for Swagger UI in development) ──
+app.use(
+  helmet({
+    contentSecurityPolicy: env.NODE_ENV === 'development' ? false : undefined,
+  }),
+);
 
 // ── CORS ──
 app.use(cors(corsOptions));
@@ -30,6 +36,17 @@ app.use(logger);
 
 // ── API routes ──
 app.use('/api', routes);
+
+// ── Swagger UI (development only) ──
+if (env.NODE_ENV === 'development') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get('/api-docs.json', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+  console.log(`[Swagger] UI → http://localhost:${env.PORT}/api-docs`);
+  console.log(`[Swagger] JSON spec → http://localhost:${env.PORT}/api-docs.json`);
+}
 
 // ── Serve uploaded files (auth-protected) ──
 app.use('/uploads', authMiddleware, express.static(path.resolve(process.cwd(), 'uploads')));
