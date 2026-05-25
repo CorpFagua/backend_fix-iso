@@ -4,16 +4,36 @@ import crypto from 'crypto';
 
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
+function sanitizePathSegment(segment: string): string {
+  const sanitized = segment.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!sanitized) {
+    throw new Error('Invalid path segment');
+  }
+  return sanitized;
+}
+
+function assertPathInsideUploads(targetPath: string): string {
+  const resolvedUploads = path.resolve(UPLOADS_DIR);
+  const resolvedTarget = path.resolve(targetPath);
+  const relative = path.relative(resolvedUploads, resolvedTarget);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Invalid file path');
+  }
+  return resolvedTarget;
+}
+
 /** Ensure the uploads directory exists */
 function ensureDir(dir: string) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  const safeDir = assertPathInsideUploads(dir);
+  if (!fs.existsSync(safeDir)) {
+    fs.mkdirSync(safeDir, { recursive: true });
   }
 }
 
 /** Build a sub-directory path: uploads/{companyId}/{docType} */
 function buildPath(companyId: number, docType: string): string {
-  const dir = path.join(UPLOADS_DIR, String(companyId), docType);
+  const safeDocType = sanitizePathSegment(docType);
+  const dir = assertPathInsideUploads(path.join(UPLOADS_DIR, String(companyId), safeDocType));
   ensureDir(dir);
   return dir;
 }
@@ -41,7 +61,7 @@ export function saveFile(
 
 /** Delete a file from local storage */
 export function deleteLocalFile(relativePath: string): void {
-  const fullPath = path.join(UPLOADS_DIR, relativePath);
+  const fullPath = assertPathInsideUploads(path.join(UPLOADS_DIR, relativePath));
   if (fs.existsSync(fullPath)) {
     fs.unlinkSync(fullPath);
   }
